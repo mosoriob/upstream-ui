@@ -18,16 +18,26 @@ export const MOCK_INSTRUMENTS = [
 interface CampaignFilterToolbarProps {
   selectedArea: string;
   selectedInstrument: string;
+  startDate: string;
+  endDate: string;
   onAreaChange: (area: string) => void;
   onInstrumentChange: (instrument: string) => void;
+  onStartDateChange: (date: string) => void;
+  onEndDateChange: (date: string) => void;
 }
 
 const CampaignFilterToolbar: React.FC<CampaignFilterToolbarProps> = ({
   selectedArea,
   selectedInstrument,
+  startDate,
+  endDate,
   onAreaChange,
   onInstrumentChange,
+  onStartDateChange,
+  onEndDateChange,
 }) => {
+  const today = new Date().toISOString().split('T')[0]; // Gets current date in YYYY-MM-DD format
+
   return (
     <div className="flex gap-4 flex-wrap">
       <select
@@ -55,6 +65,26 @@ const CampaignFilterToolbar: React.FC<CampaignFilterToolbarProps> = ({
           </option>
         ))}
       </select>
+
+      <input
+        type="date"
+        className="p-2 border rounded-md"
+        value={startDate}
+        onChange={(e) => onStartDateChange(e.target.value)}
+        placeholder="Start Date"
+        min="2020-01-01"
+        max={today}
+      />
+
+      <input
+        type="date"
+        className="p-2 border rounded-md"
+        value={endDate}
+        onChange={(e) => onEndDateChange(e.target.value)}
+        placeholder="End Date"
+        min={startDate || '2020-01-01'}
+        max={today}
+      />
     </div>
   );
 };

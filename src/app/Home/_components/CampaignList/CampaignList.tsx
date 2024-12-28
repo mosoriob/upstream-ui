@@ -7,6 +7,10 @@ import CampaignFilterToolbar from '../CampaignFilterToolbar';
 const CampaignList: React.FC = () => {
   const [selectedArea, setSelectedArea] = useState<string>('');
   const [selectedInstrument, setSelectedInstrument] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>('2020-01-01');
+  const [endDate, setEndDate] = useState<string>(
+    new Date().toISOString().split('T')[0],
+  );
 
   const { data: campaigns, isLoading, error } = useList();
 
@@ -33,6 +37,10 @@ const CampaignList: React.FC = () => {
           selectedInstrument={selectedInstrument}
           onAreaChange={setSelectedArea}
           onInstrumentChange={setSelectedInstrument}
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
         />
 
         <QueryWrapper isLoading={isLoading} error={error}>
