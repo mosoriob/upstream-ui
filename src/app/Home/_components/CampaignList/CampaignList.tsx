@@ -14,13 +14,14 @@ const CampaignList: React.FC = () => {
 
   const { data: campaigns, isLoading, error } = useList();
 
+  const filteredCampaigns = campaigns;
   // Filter campaigns based on selections
-  const filteredCampaigns = campaigns?.filter((campaign) => {
-    const areaMatch = !selectedArea || campaign.area === selectedArea;
-    const instrumentMatch =
-      !selectedInstrument || campaign.instrument === selectedInstrument;
-    return areaMatch && instrumentMatch;
-  });
+  // const filteredCampaigns = campaigns?.filter((campaign) => {
+  //   const areaMatch = !selectedArea || campaign.area === selectedArea;
+  //   const instrumentMatch =
+  //     !selectedInstrument || campaign.instrument === selectedInstrument;
+  //   return areaMatch && instrumentMatch;
+  // });
 
   return (
     <div
