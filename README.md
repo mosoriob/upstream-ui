@@ -1,4 +1,5 @@
-# Upstream Viz
+# Upstream Viz  
+[![DOI](https://zenodo.org/badge/1076822803.svg)](https://doi.org/10.5281/zenodo.17664816)
 
 A modern visualization platform for environmental sensor data. This application provides powerful tools for analyzing, visualizing, and exploring time-series data from environmental monitoring campaigns.
 
@@ -395,7 +396,17 @@ graph LR
    cd packages/upstream-api && npm run build && cd ../..
    ```
 
-4. Start the development server:
+4. Configure required environment variables before running any build or dev commands. You can either:
+   - Set the URLs in `.env` or export them in your shell:
+
+     ```bash
+     export VITE_UPSTREAM_API_URL="https://your-upstream-api.example.com"
+     export VITE_CKAN_URL="https://your-ckan.example.com"
+     ```
+
+   - Or, for containerized deployments, edit `public/runtime-config.js` (or replace it at runtime) to assign `window.__UPSTREAM_CONFIG__.VITE_UPSTREAM_API_URL` and `window.__UPSTREAM_CONFIG__.VITE_CKAN_URL`.
+
+5. Start the development server:
    ```bash
    npm run dev
    ```

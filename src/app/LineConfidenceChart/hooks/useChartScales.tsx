@@ -5,11 +5,12 @@ import { line, curveCatmullRom, area } from 'd3-shape';
 import { AggregatedMeasurement } from '@upstream/upstream-api';
 import { getDataSegments } from '../utils/chartUtils';
 import { AdditionalSensor } from '../LineConfidenceChart';
-import { useLineConfidence } from '../../Sensor/viz/LineConfidenceViz/context/LineConfidenceContext';
+import { useLineConfidence } from '../../Sensor/viz/LineConfidenceViz/context/LineConfidenceContextState';
 
 interface ChartDimensions {
   innerWidth: number;
   mainInnerHeight: number;
+  overviewInnerHeight: number;
 }
 
 interface UseChartScalesProps {
@@ -90,7 +91,7 @@ export function useChartScales({
 
     const overviewYScale = scaleLinear()
       .domain(yExtent)
-      .range([chartDimensions.mainInnerHeight, 0]);
+      .range([chartDimensions.overviewInnerHeight, 0]);
 
     return { xScale, yScale, overviewXScale, overviewYScale };
   }, [

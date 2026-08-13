@@ -2,10 +2,8 @@ import QueryWrapper from '../../../common/QueryWrapper';
 import MeasurementSummary from '../../../SensorDashboard/_components/MeasurementSummary';
 import { Chart } from './_components/Chart';
 import { AdditionalSensorsList } from './_components/AdditionalSensorsList';
-import {
-  LineConfidenceProvider,
-  useLineConfidence,
-} from './context/LineConfidenceContext';
+import { LineConfidenceProvider } from './context/LineConfidenceContext';
+import { useLineConfidence } from './context/LineConfidenceContextState';
 import Controls from './_components/Controls';
 import SensorFilteringModal from './_components/SensorFilteringModal';
 import {useDetail as campaignInfo} from '../../../../hooks/campaign/useDetail';
@@ -68,6 +66,8 @@ const LineConfidenceContent = () => {
           <MeasurementSummary data={data} />
           <Controls />
           <AdditionalSensorsList />
+          {/* Click a point on the chart to view/add a note at the nearest
+              measurement — the note callout is rendered by the chart itself. */}
           <Chart />
           {addSensorModalOpen && <SensorFilteringModal />}
         </div>

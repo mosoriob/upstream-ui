@@ -1,42 +1,18 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
-} from 'react';
+import React, { useState, useEffect, ReactNode } from 'react';
 import { useDetail } from '../../../../../hooks/sensor/useDetail';
 import { useList } from '../../../../../hooks/measurements/useList';
 import { useListConfidenceValues } from '../../../../../hooks/measurements/useListConfidenceValues';
 import {
-  GetSensorResponse,
-  AggregatedMeasurement,
-  ListMeasurementsResponsePagination,
-} from '@upstream/upstream-api';
+  AggregationInterval,
+  AGGREGATION_INTERVALS,
+  LineConfidenceContext,
+  SensorData,
+  SensorInfo,
+  useLineConfidence,
+} from './LineConfidenceContextState';
 
-export type AggregationInterval = 'minute' | 'hour' | 'day' | 'week' | 'month';
-
-export const AGGREGATION_INTERVALS: AggregationInterval[] = [
-  'minute',
-  'hour',
-  'day',
-  'week',
-  'month',
-];
-
-interface SensorInfo {
-  id: string;
-  campaignId: string;
-  stationId: string;
-}
-
-interface SensorData {
-  info: SensorInfo;
-  aggregatedData: AggregatedMeasurement[] | null;
-  aggregatedLoading: boolean;
-  aggregatedError: Error | null;
-  allPoints: ListMeasurementsResponsePagination | null;
-}
+const getSensorKey = (sensorInfo: Omit<SensorInfo, 'key'>) =>
+  `${sensorInfo.campaignId}-${sensorInfo.stationId}-${sensorInfo.id}`;
 
 // Custom hook to fetch sensor data
 const useSensorData = (
@@ -44,6 +20,9 @@ const useSensorData = (
   effectiveInterval: string,
   aggregationValue: number,
   sampleSize: number,
+  minFilterValue?: number,
+  maxFilterValue?: number,
+  selectedTimeRange?: [number, number] | null,
 ): SensorData => {
   const {
     data: sensorAggregatedData,
@@ -55,6 +34,8 @@ const useSensorData = (
     sensorInfo.id,
     effectiveInterval,
     aggregationValue,
+    minFilterValue,
+    maxFilterValue,
   );
 
   const { data: sensorAllPoints } = useList(
@@ -63,6 +44,10 @@ const useSensorData = (
     sensorInfo.id,
     100000,
     sampleSize,
+    minFilterValue,
+    maxFilterValue,
+    selectedTimeRange ? new Date(selectedTimeRange[0]) : undefined,
+    selectedTimeRange ? new Date(selectedTimeRange[1]) : undefined,
   );
 
   return {
@@ -73,49 +58,6 @@ const useSensorData = (
     allPoints: sensorAllPoints,
   };
 };
-
-interface LineConfidenceContextProps {
-  data: GetSensorResponse | undefined;
-  isLoading: boolean;
-  error: Error | null;
-  selectedTimeRange: [number, number] | null;
-  setSelectedTimeRange: React.Dispatch<
-    React.SetStateAction<[number, number] | null>
-  >;
-  aggregationInterval: AggregationInterval | null;
-  setAggregationInterval: React.Dispatch<
-    React.SetStateAction<AggregationInterval | null>
-  >;
-  handleAggregationIntervalChange: (
-    event: React.ChangeEvent<HTMLSelectElement>,
-  ) => void;
-  aggregatedData: AggregatedMeasurement[] | null;
-  aggregatedLoading: boolean;
-  aggregatedError: Error | null;
-  allPoints: ListMeasurementsResponsePagination | null;
-  additionalSensors: SensorData[];
-  addSensor: (campaignId: string, stationId: string, sensorId: string) => void;
-  removeSensor: (sensorId: string) => void;
-  renderDataPoints: boolean;
-  setRenderDataPoints: React.Dispatch<React.SetStateAction<boolean>>;
-  addingSensor: boolean;
-  campaignId: string;
-  stationId: string;
-  sensorId: string;
-  addSensorModalOpen: boolean;
-  setAddSensorModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  maxValueChart: number | undefined;
-  setMaxValueChart: React.Dispatch<React.SetStateAction<number | undefined>>;
-  minValueChart: number | undefined;
-  setMinValueChart: React.Dispatch<React.SetStateAction<number | undefined>>;
-  sampleSize: number;
-  setSampleSize: React.Dispatch<React.SetStateAction<number>>;
-  sampleSizeLoading: boolean;
-}
-
-const LineConfidenceContext = createContext<
-  LineConfidenceContextProps | undefined
->(undefined);
 
 interface LineConfidenceProviderProps {
   children: ReactNode;
@@ -129,14 +71,28 @@ const AdditionalSensor: React.FC<{
   sensorInfo: SensorInfo;
   effectiveInterval: string;
   aggregationValue: number;
+  minFilterValue?: number;
+  maxFilterValue?: number;
+  selectedTimeRange?: [number, number] | null;
   onDataReady: (sensorData: SensorData) => void;
-}> = ({ sensorInfo, effectiveInterval, aggregationValue, onDataReady }) => {
+}> = ({
+  sensorInfo,
+  effectiveInterval,
+  aggregationValue,
+  minFilterValue,
+  maxFilterValue,
+  selectedTimeRange,
+  onDataReady,
+}) => {
   const { sampleSize } = useLineConfidence();
   const sensorData = useSensorData(
     sensorInfo,
     effectiveInterval,
     aggregationValue,
     sampleSize,
+    minFilterValue,
+    maxFilterValue,
+    selectedTimeRange,
   );
 
   useEffect(() => {
@@ -157,7 +113,9 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
     [number, number] | null
   >(null);
   const [aggregationInterval, setAggregationInterval] =
-    useState<AggregationInterval | null>(null);
+    useState<AggregationInterval>('minute');
+  const [hasUserSelectedAggregation, setHasUserSelectedAggregation] =
+    useState(false);
   const [additionalSensorInfos, setAdditionalSensorInfos] = useState<
     SensorInfo[]
   >([]);
@@ -175,13 +133,20 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
   const [addSensorModalOpen, setAddSensorModalOpen] = useState<boolean>(false);
   const [sampleSize, setSampleSize] = useState<number>(2000);
   const [sampleSizeLoading, setSampleSizeLoading] = useState<boolean>(false);
+  const [minFilterValueInput, setMinFilterValueInput] = useState<string>('');
+  const [maxFilterValueInput, setMaxFilterValueInput] = useState<string>('');
+  const parsedMinFilterValue =
+    minFilterValueInput.trim() === '' ? undefined : Number(minFilterValueInput);
+  const parsedMaxFilterValue =
+    maxFilterValueInput.trim() === '' ? undefined : Number(maxFilterValueInput);
+  const minFilterValue = Number.isFinite(parsedMinFilterValue)
+    ? parsedMinFilterValue
+    : undefined;
+  const maxFilterValue = Number.isFinite(parsedMaxFilterValue)
+    ? parsedMaxFilterValue
+    : undefined;
 
   useEffect(() => {
-    if (data) {
-      if (aggregationInterval === null) {
-        setAggregationInterval('minute');
-      }
-    }
     if (data) {
       if (data.statistics?.percentile99) {
         setMaxValueChart(data.statistics?.maxValue ?? undefined);
@@ -198,15 +163,20 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
     }
   }, [data]);
 
+  useEffect(() => {
+    setAggregationInterval('minute');
+    setHasUserSelectedAggregation(false);
+  }, [campaignId, stationId, sensorId]);
+
   const handleAggregationIntervalChange = (
     event: React.ChangeEvent<HTMLSelectElement>,
   ) => {
+    setHasUserSelectedAggregation(true);
     setAggregationInterval(event.target.value as AggregationInterval);
   };
 
   const aggregationValue = 1;
-
-  const effectiveInterval = aggregationInterval || 'minute';
+  const effectiveInterval = aggregationInterval;
 
   const {
     data: aggregatedData,
@@ -218,6 +188,8 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
     sensorId,
     effectiveInterval,
     aggregationValue,
+    minFilterValue,
+    maxFilterValue,
   );
   const { data: allPoints, isLoading: allPointsLoading } = useList(
     campaignId,
@@ -225,6 +197,10 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
     sensorId,
     100000,
     sampleSize,
+    minFilterValue,
+    maxFilterValue,
+    selectedTimeRange ? new Date(selectedTimeRange[0]) : undefined,
+    selectedTimeRange ? new Date(selectedTimeRange[1]) : undefined,
   );
 
   // Update sampleSizeLoading when allPointsLoading changes
@@ -232,22 +208,42 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
     setSampleSizeLoading(allPointsLoading);
   }, [allPointsLoading]);
 
+  useEffect(() => {
+    if (
+      hasUserSelectedAggregation ||
+      aggregatedLoading ||
+      aggregatedError ||
+      aggregatedData === null ||
+      aggregatedData.length > 0
+    ) {
+      return;
+    }
+
+    const currentIndex = AGGREGATION_INTERVALS.indexOf(aggregationInterval);
+    const nextInterval = AGGREGATION_INTERVALS[currentIndex + 1];
+
+    if (nextInterval) {
+      setAggregationInterval(nextInterval);
+    }
+  }, [
+    aggregationInterval,
+    aggregatedData,
+    aggregatedError,
+    aggregatedLoading,
+    hasUserSelectedAggregation,
+  ]);
+
   // Function to add a new sensor
-  const addSensor = (
-    newCampaignId: string,
-    newStationId: string,
-    newSensorId: string,
-  ) => {
+  const addSensor = (newSensorInfo: Omit<SensorInfo, 'key'>) => {
+    const newSensorKey = getSensorKey(newSensorInfo);
+
     // Check if the sensor is already added
     if (
-      (newSensorId === sensorId &&
-        newCampaignId === campaignId &&
-        newStationId === stationId) ||
+      (newSensorInfo.id === sensorId &&
+        newSensorInfo.campaignId === campaignId &&
+        newSensorInfo.stationId === stationId) ||
       additionalSensorInfos.some(
-        (sensor) =>
-          sensor.id === newSensorId &&
-          sensor.campaignId === newCampaignId &&
-          sensor.stationId === newStationId,
+        (sensor) => sensor.key === newSensorKey,
       )
     ) {
       return; // Sensor already exists
@@ -260,9 +256,8 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
     setAdditionalSensorInfos((prev) => [
       ...prev,
       {
-        id: newSensorId,
-        campaignId: newCampaignId,
-        stationId: newStationId,
+        ...newSensorInfo,
+        key: newSensorKey,
       },
     ]);
   };
@@ -271,7 +266,7 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
   const handleSensorDataUpdate = (updatedSensorData: SensorData) => {
     setAdditionalSensorsData((prev) => {
       const existingIndex = prev.findIndex(
-        (item) => item.info.id === updatedSensorData.info.id,
+        (item) => item.info.key === updatedSensorData.info.key,
       );
 
       // Don't update if the data hasn't actually changed
@@ -304,19 +299,17 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
 
   // Clean up removed sensors from the data array
   useEffect(() => {
-    if (additionalSensorsData.length > 0) {
-      setAdditionalSensorsData((prev) =>
-        prev.filter((sensorData) =>
-          additionalSensorInfos.some((info) => info.id === sensorData.info.id),
-        ),
-      );
-    }
+    setAdditionalSensorsData((prev) =>
+      prev.filter((sensorData) =>
+        additionalSensorInfos.some((info) => info.key === sensorData.info.key),
+      ),
+    );
   }, [additionalSensorInfos]);
 
   // Function to remove a sensor
-  const removeSensor = (sensorIdToRemove: string) => {
+  const removeSensor = (sensorKeyToRemove: string) => {
     setAdditionalSensorInfos((prev) =>
-      prev.filter((sensor) => sensor.id !== sensorIdToRemove),
+      prev.filter((sensor) => sensor.key !== sensorKeyToRemove),
     );
   };
 
@@ -351,6 +344,10 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
     sampleSize,
     setSampleSize,
     sampleSizeLoading,
+    minFilterValueInput,
+    setMinFilterValueInput,
+    maxFilterValueInput,
+    setMaxFilterValueInput,
   };
 
   return (
@@ -358,24 +355,17 @@ export const LineConfidenceProvider: React.FC<LineConfidenceProviderProps> = ({
       {/* Render a component for each additional sensor to manage its data */}
       {additionalSensorInfos.map((sensorInfo) => (
         <AdditionalSensor
-          key={sensorInfo.id}
+          key={sensorInfo.key}
           sensorInfo={sensorInfo}
           effectiveInterval={effectiveInterval}
           aggregationValue={aggregationValue}
+          minFilterValue={minFilterValue}
+          maxFilterValue={maxFilterValue}
+          selectedTimeRange={selectedTimeRange}
           onDataReady={handleSensorDataUpdate}
         />
       ))}
       {children}
     </LineConfidenceContext.Provider>
   );
-};
-
-export const useLineConfidence = (): LineConfidenceContextProps => {
-  const context = useContext(LineConfidenceContext);
-  if (context === undefined) {
-    throw new Error(
-      'useLineConfidence must be used within a LineConfidenceProvider',
-    );
-  }
-  return context;
 };

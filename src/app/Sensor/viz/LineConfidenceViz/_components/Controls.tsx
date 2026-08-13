@@ -1,4 +1,4 @@
-import { useLineConfidence } from '../context/LineConfidenceContext';
+import { useLineConfidence } from '../context/LineConfidenceContextState';
 import { Link } from 'react-router-dom';
 import { AddSensorButton } from './AddSensorButton';
 import { useState } from 'react';
@@ -18,6 +18,10 @@ const Controls = () => {
     sampleSize,
     setSampleSize,
     sampleSizeLoading,
+    minFilterValueInput,
+    setMinFilterValueInput,
+    maxFilterValueInput,
+    setMaxFilterValueInput,
   } = useLineConfidence();
 
   // State for active button styling
@@ -108,7 +112,7 @@ const Controls = () => {
             if (sensor.allPoints && sensor.allPoints.items) {
               sensor.allPoints.items.forEach((item: MeasurementItem) => {
                 const rowData = [
-                  sensor.info.id, // Additional sensor ID
+                  sensor.info.key,
                   item.id,
                   item.value,
                   new Date(item.collectiontime).toISOString(),
@@ -144,7 +148,7 @@ const Controls = () => {
           additionalSensors.forEach((sensor) => {
             if (sensor.allPoints && sensor.allPoints.items) {
               allData.push({
-                sensorId: sensor.info.id,
+                sensorId: sensor.info.key,
                 points: sensor.allPoints.items,
               });
             }
@@ -186,11 +190,10 @@ const Controls = () => {
             </label>
             <select
               id="aggregationInterval"
-              value={aggregationInterval || ''}
+              value={aggregationInterval}
               onChange={handleAggregationIntervalChange}
               className="form-select text-sm border rounded px-2 py-1"
             >
-              <option value="">Select interval</option>
               <option value="minute">Minute</option>
               <option value="hour">Hour</option>
               <option value="day">Day</option>
@@ -230,6 +233,42 @@ const Controls = () => {
               <div className="ml-2 text-xs text-yellow-600">
                 ⚠️ Higher values may slow down visualization
               </div>
+            </div>
+          )}
+          <div className="h-8 border-r border-gray-300"></div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <span>Value &gt;=</span>
+              <input
+                className="w-28 rounded border px-2 py-1 text-sm"
+                inputMode="decimal"
+                type="number"
+                value={minFilterValueInput}
+                onChange={(event) => setMinFilterValueInput(event.target.value)}
+                placeholder="Any"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <span>Value &lt;=</span>
+              <input
+                className="w-28 rounded border px-2 py-1 text-sm"
+                inputMode="decimal"
+                type="number"
+                value={maxFilterValueInput}
+                onChange={(event) => setMaxFilterValueInput(event.target.value)}
+                placeholder="Any"
+              />
+            </label>
+          </div>
+          {allPoints && (
+            <div className="ml-auto text-xs text-gray-600 whitespace-nowrap">
+              Current range: {allPoints.total.toLocaleString()} total points
+              {allPoints.downsampled && (
+                <span>
+                  {' '}
+                  ({allPoints.items.length.toLocaleString()} shown)
+                </span>
+              )}
             </div>
           )}
         </div>

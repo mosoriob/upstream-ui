@@ -2,20 +2,27 @@ import * as React from 'react';
 import { AggregatedMeasurement, MeasurementItem } from '@upstream/upstream-api';
 import { ScaleLinear } from 'd3-scale';
 import { AdditionalSensor } from '../LineConfidenceChart';
-import { useChartBrush } from '../hooks/useChartBrush';
-import { useLineConfidence } from '../../Sensor/viz/LineConfidenceViz/context/LineConfidenceContext';
+import { useLineConfidence } from '../../Sensor/viz/LineConfidenceViz/context/LineConfidenceContextState';
+import { SelectedPointPayload } from './MeasurementNoteCallout';
 
-// Types
-interface TooltipData {
-  x: number;
-  y: number;
-  data: AggregatedMeasurement;
-  sensorId: string;
-}
-
-interface PointTooltipData extends Partial<MeasurementItem> {
-  x: number;
-  y: number;
+// Finds the raw measurement whose timestamp is closest to the target time.
+// Aggregated buckets have no stable id, so notes always attach to the
+// nearest *raw* measurement rather than the bucket itself.
+function findNearestMeasurement(
+  targetTimeMs: number,
+  points: MeasurementItem[] | undefined,
+): MeasurementItem | null {
+  if (!points || points.length === 0) return null;
+  let nearest = points[0];
+  let nearestDelta = Math.abs(points[0].collectiontime.getTime() - targetTimeMs);
+  for (let i = 1; i < points.length; i++) {
+    const delta = Math.abs(points[i].collectiontime.getTime() - targetTimeMs);
+    if (delta < nearestDelta) {
+      nearest = points[i];
+      nearestDelta = delta;
+    }
+  }
+  return nearest;
 }
 
 interface MainChartProps {
@@ -51,12 +58,6 @@ interface MainChartProps {
   pointRadius: number;
   xAxisTitle: string;
   yAxisTitle: string;
-  setTooltipAggregation: React.Dispatch<
-    React.SetStateAction<TooltipData | null>
-  >;
-  setTooltipPoint?: React.Dispatch<
-    React.SetStateAction<PointTooltipData | null>
-  >;
   additionalSensors?: AdditionalSensor[];
   colorPalette?: Array<{
     line: string;
@@ -65,10 +66,10 @@ interface MainChartProps {
   }>;
   renderDataPoints: boolean;
   selectedSensorId: string;
-  overviewRef: React.RefObject<SVGGElement>;
-  setViewDomain: React.Dispatch<React.SetStateAction<[number, number] | null>>;
-  onBrush?: (domain: [number, number]) => void;
-  showLineOverview?: boolean;
+  campaignId: string;
+  stationId: string;
+  onResetView: () => void;
+  onPointSelect?: (payload: SelectedPointPayload) => void;
 }
 
 // Helper Components
@@ -174,27 +175,15 @@ const MainChart: React.FC<MainChartProps> = ({
   pointRadius = 3, // Default value
   xAxisTitle,
   yAxisTitle,
-  setTooltipAggregation,
-  setTooltipPoint,
   additionalSensors,
   colorPalette,
   renderDataPoints = true, // Default value
   selectedSensorId,
-  overviewRef,
-  setViewDomain,
-  onBrush,
-  showLineOverview,
+  campaignId,
+  stationId,
+  onResetView,
+  onPointSelect,
 }) => {
-  // Get resetZoom function from useChartBrush
-  const { resetZoom } = useChartBrush({
-    overviewRef,
-    innerWidth: chartDimensions.innerWidth,
-    overviewInnerHeight: chartDimensions.mainInnerHeight,
-    overviewXScale: scales.xScale,
-    setViewDomain,
-    onBrush,
-  });
-
   // Helper function to handle tooltip positioning
   const handleTooltipPosition = React.useCallback(
     (
@@ -306,12 +295,19 @@ const MainChart: React.FC<MainChartProps> = ({
             onClick={(e) => {
               e.stopPropagation(); // Prevent event from bubbling to zoom container
               const tooltipPos = handleTooltipPosition(e, d);
-              if (tooltipPos) {
-                setTooltipAggregation({
+              const nearest = findNearestMeasurement(d.measurementTime.getTime(), allPoints);
+              if (tooltipPos && nearest && onPointSelect) {
+                onPointSelect({
                   x: tooltipPos.x,
                   y: tooltipPos.y,
-                  data: d,
+                  measurementId: nearest.id,
+                  timestamp: nearest.collectiontime,
+                  value: nearest.value ?? d.value,
+                  campaignId,
+                  stationId,
                   sensorId: selectedSensorId,
+                  bucketContext: { averageValue: d.value, pointCount: d.pointCount },
+                  geometry: nearest.geometry as unknown as GeoJSON.Point,
                 });
               }
             }}
@@ -322,22 +318,32 @@ const MainChart: React.FC<MainChartProps> = ({
         {additionalSensors?.map((sensor, sensorIndex) =>
           sensor.aggregatedData?.map((d) => (
             <DataPoint
-              key={`point-${sensor.info.id}-${d.measurementTime.getTime()}`}
+              key={`point-${sensor.info.key}-${d.measurementTime.getTime()}`}
               cx={scales.xScale(d.measurementTime.getTime())}
               cy={scales.yScale(d.value)}
               radius={pointRadius}
               color={getSensorColor('point', sensorIndex + 1)}
-              pointKey={`point-${sensor.info.id}-${d.measurementTime.getTime()}`}
+              pointKey={`point-${sensor.info.key}-${d.measurementTime.getTime()}`}
               isInteractive={true}
               onClick={(e) => {
                 e.stopPropagation(); // Prevent event from bubbling to zoom container
                 const tooltipPos = handleTooltipPosition(e, d);
-                if (tooltipPos) {
-                  setTooltipAggregation({
+                const nearest = findNearestMeasurement(
+                  d.measurementTime.getTime(),
+                  sensor.allPoints ?? undefined,
+                );
+                if (tooltipPos && nearest && onPointSelect) {
+                  onPointSelect({
                     x: tooltipPos.x,
                     y: tooltipPos.y,
-                    data: d,
+                    measurementId: nearest.id,
+                    timestamp: nearest.collectiontime,
+                    value: nearest.value ?? d.value,
+                    campaignId: sensor.info.campaignId,
+                    stationId: sensor.info.stationId,
                     sensorId: sensor.info.id,
+                    bucketContext: { averageValue: d.value, pointCount: d.pointCount },
+                    geometry: nearest.geometry as unknown as GeoJSON.Point,
                   });
                 }
               }}
@@ -353,17 +359,16 @@ const MainChart: React.FC<MainChartProps> = ({
       pointRadius,
       getSensorColor,
       selectedSensorId,
-      setTooltipAggregation,
+      campaignId,
+      stationId,
+      allPoints,
+      onPointSelect,
+      handleTooltipPosition,
     ],
   );
 
   const renderIndividualPoints = React.useMemo(() => {
-    if (
-      !renderDataPoints ||
-      !allPoints ||
-      allPoints.length === 0 ||
-      !setTooltipPoint
-    ) {
+    if (!renderDataPoints || !allPoints || allPoints.length === 0) {
       return null;
     }
 
@@ -381,11 +386,18 @@ const MainChart: React.FC<MainChartProps> = ({
             onClick={(e) => {
               e.stopPropagation(); // Prevent event from bubbling to zoom container
               const tooltipPos = handleTooltipPosition(e, d);
-              if (tooltipPos) {
-                setTooltipPoint({
-                  ...d,
+              if (tooltipPos && onPointSelect) {
+                onPointSelect({
                   x: tooltipPos.x,
                   y: tooltipPos.y,
+                  measurementId: d.id,
+                  timestamp: d.collectiontime,
+                  value: d.value ?? 0,
+                  campaignId,
+                  stationId,
+                  sensorId: selectedSensorId,
+                  bucketContext: null,
+                  geometry: d.geometry as unknown as GeoJSON.Point,
                 });
               }
             }}
@@ -394,21 +406,28 @@ const MainChart: React.FC<MainChartProps> = ({
         {additionalSensors?.map((sensor, sensorIndex) =>
           sensor.allPoints?.map((d, index) => (
             <DataPoint
-              key={`individual-${d.collectiontime.getTime()}-${d.value}-${index}`}
+              key={`individual-${sensor.info.key}-${d.collectiontime.getTime()}-${d.value}-${index}`}
               cx={scales.xScale(d.collectiontime.getTime())}
               cy={scales.yScale(d.value)}
               radius={pointRadius}
               color={getSensorColor('point', sensorIndex + 1)}
-              pointKey={`individual-${d.collectiontime.getTime()}-${d.value}-${index}`}
+              pointKey={`individual-${sensor.info.key}-${d.collectiontime.getTime()}-${d.value}-${index}`}
               isInteractive
               onClick={(e) => {
                 e.stopPropagation(); // Prevent event from bubbling to zoom container
                 const tooltipPos = handleTooltipPosition(e, d);
-                if (tooltipPos) {
-                  setTooltipPoint({
-                    ...d,
+                if (tooltipPos && onPointSelect) {
+                  onPointSelect({
                     x: tooltipPos.x,
                     y: tooltipPos.y,
+                    measurementId: d.id,
+                    timestamp: d.collectiontime,
+                    value: d.value ?? 0,
+                    campaignId: sensor.info.campaignId,
+                    stationId: sensor.info.stationId,
+                    sensorId: sensor.info.id,
+                    bucketContext: null,
+                    geometry: d.geometry as unknown as GeoJSON.Point,
                   });
                 }
               }}
@@ -420,13 +439,16 @@ const MainChart: React.FC<MainChartProps> = ({
   }, [
     allPoints,
     renderDataPoints,
-    setTooltipPoint,
     scales,
     pointRadius,
     colors.point,
     handleTooltipPosition,
     additionalSensors,
     getSensorColor,
+    onPointSelect,
+    campaignId,
+    stationId,
+    selectedSensorId,
   ]);
 
   const renderXAxis = React.useMemo(
@@ -573,27 +595,6 @@ const MainChart: React.FC<MainChartProps> = ({
           </g>
         ))}
 
-      {/* Zoom container - rendered first to handle wheel events */}
-      {showLineOverview && (
-        <g
-          ref={overviewRef}
-          className="zoom-container"
-          style={{
-            pointerEvents: 'all',
-            cursor: 'grab',
-          }}
-        >
-          <rect
-            x={0}
-            y={0}
-            width={chartDimensions.innerWidth}
-            height={chartDimensions.mainInnerHeight}
-            fill="transparent"
-            style={{ pointerEvents: 'all' }}
-          />
-        </g>
-      )}
-
       {/* Data visualization layer - rendered on top of zoom container */}
       <g
         className="data-layer"
@@ -623,7 +624,7 @@ const MainChart: React.FC<MainChartProps> = ({
       <ResetButton
         x={chartDimensions.innerWidth - 90}
         y={-30}
-        onClick={resetZoom}
+        onClick={onResetView}
       />
     </g>
   );

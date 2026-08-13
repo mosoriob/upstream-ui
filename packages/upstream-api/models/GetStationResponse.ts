@@ -20,6 +20,8 @@ import {
     SensorItemToJSON,
     SensorItemToJSONTyped,
 } from './SensorItem';
+import type { StationType } from './StationType';
+import { StationTypeFromJSON, StationTypeToJSON } from './StationType';
 
 /**
  * 
@@ -70,7 +72,13 @@ export interface GetStationResponse {
      */
     startDate?: Date | null;
     /**
-     * 
+     *
+     * @type {StationType}
+     * @memberof GetStationResponse
+     */
+    stationType?: StationType;
+    /**
+     *
      * @type {object}
      * @memberof GetStationResponse
      */
@@ -81,6 +89,12 @@ export interface GetStationResponse {
      * @memberof GetStationResponse
      */
     sensors?: Array<SensorItem> | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof GetStationResponse
+     */
+    metadata?: { [key: string]: any; } | null;
 }
 
 /**
@@ -109,8 +123,10 @@ export function GetStationResponseFromJSONTyped(json: any, ignoreDiscriminator: 
         'contactEmail': json['contact_email'] == null ? undefined : json['contact_email'],
         'active': json['active'] == null ? undefined : json['active'],
         'startDate': json['start_date'] == null ? undefined : (new Date(json['start_date'])),
+        'stationType': json['station_type'] == null ? undefined : StationTypeFromJSON(json['station_type']),
         'geometry': json['geometry'] == null ? undefined : json['geometry'],
         'sensors': json['sensors'] == null ? undefined : ((json['sensors'] as Array<any>).map(SensorItemFromJSON)),
+        'metadata': json['metadata'] == null ? undefined : json['metadata'],
     };
 }
 
@@ -132,8 +148,9 @@ export function GetStationResponseToJSONTyped(value?: GetStationResponse | null,
         'contact_email': value['contactEmail'],
         'active': value['active'],
         'start_date': value['startDate'] == null ? undefined : ((value['startDate'] as any).toISOString()),
+        'station_type': StationTypeToJSON(value['stationType']),
         'geometry': value['geometry'],
         'sensors': value['sensors'] == null ? undefined : ((value['sensors'] as Array<any>).map(SensorItemToJSON)),
+        'metadata': value['metadata'],
     };
 }
-

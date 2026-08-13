@@ -1,10 +1,10 @@
 import * as React from 'react';
 import { AggregatedMeasurement, MeasurementItem } from '@upstream/upstream-api';
 import MainChart from './components/MainChart';
-import ChartTooltip, {
-  TooltipData,
-  PointTooltipData,
-} from './components/ChartTooltip';
+import OverviewChart from './components/OverviewChart';
+import MeasurementNoteCallout, {
+  SelectedPointPayload,
+} from './components/MeasurementNoteCallout';
 import { useChartDimensions } from './hooks/useChartDimensions';
 import { useChartScales } from './hooks/useChartScales';
 import { useChartBrush } from './hooks/useChartBrush';
@@ -13,6 +13,7 @@ import { defaultChartStyles, defaultFormatters } from './utils/chartUtils';
 // Define the structure of additional sensors
 export interface AdditionalSensor {
   info: {
+    key: string;
     id: string;
     campaignId: string;
     stationId: string;
@@ -54,6 +55,8 @@ export interface LineConfidenceChartProps {
   }>;
   renderDataPoints: boolean;
   selectedSensorId: string;
+  campaignId: string;
+  stationId: string;
 }
 
 const LineConfidenceChart: React.FC<LineConfidenceChartProps> = ({
@@ -63,6 +66,7 @@ const LineConfidenceChart: React.FC<LineConfidenceChartProps> = ({
   width,
   height,
   margin = defaultChartStyles.margin,
+  showAreaOverview = defaultChartStyles.showAreaOverview,
   showLineOverview = defaultChartStyles.showLineOverview,
   pointRadius = defaultChartStyles.pointRadius,
   colors = defaultChartStyles.colors,
@@ -86,6 +90,8 @@ const LineConfidenceChart: React.FC<LineConfidenceChartProps> = ({
   ],
   renderDataPoints,
   selectedSensorId: sensorId,
+  campaignId,
+  stationId,
 }) => {
   // Container ref for resizing
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -98,12 +104,9 @@ const LineConfidenceChart: React.FC<LineConfidenceChartProps> = ({
     null,
   );
 
-  // Tooltip states
-  const [tooltip, setTooltipAggregation] = React.useState<TooltipData | null>(
-    null,
-  );
-  const [tooltipPoint, setTooltipPoint] =
-    React.useState<PointTooltipData | null>(null);
+  // The measurement currently selected for viewing/adding a note, if any
+  const [selectedPoint, setSelectedPoint] =
+    React.useState<SelectedPointPayload | null>(null);
 
   // Calculate chart dimensions
   const { dimensions, chartDimensions } = useChartDimensions({
@@ -126,12 +129,11 @@ const LineConfidenceChart: React.FC<LineConfidenceChartProps> = ({
     yFormatter,
   });
 
-  // Set up brush
-  useChartBrush({
+  const { resetZoom } = useChartBrush({
     overviewRef,
     innerWidth: chartDimensions.innerWidth,
     overviewXScale: scales?.overviewXScale,
-    overviewInnerHeight: chartDimensions.mainInnerHeight,
+    overviewInnerHeight: chartDimensions.overviewInnerHeight,
     setViewDomain,
     onBrush,
   });
@@ -181,17 +183,31 @@ const LineConfidenceChart: React.FC<LineConfidenceChartProps> = ({
           pointRadius={pointRadius}
           xAxisTitle={xAxisTitle}
           yAxisTitle={yAxisTitle}
-          setTooltipAggregation={setTooltipAggregation}
-          setTooltipPoint={setTooltipPoint}
           additionalSensors={additionalSensors}
           colorPalette={colorPalette}
           renderDataPoints={renderDataPoints}
           selectedSensorId={sensorId}
-          overviewRef={overviewRef}
-          setViewDomain={setViewDomain}
-          onBrush={onBrush}
-          showLineOverview={showLineOverview}
+          campaignId={campaignId}
+          stationId={stationId}
+          onResetView={resetZoom}
+          onPointSelect={setSelectedPoint}
         />
+
+        {/* Overview chart */}
+        {showLineOverview && (
+          <OverviewChart
+            showAreaOverview={showAreaOverview}
+            showLineOverview={showLineOverview}
+            paths={paths}
+            chartDimensions={chartDimensions}
+            scales={scales}
+            margin={margin}
+            colors={colors}
+            colorPalette={colorPalette}
+            xFormatterOverview={xFormatterOverview}
+            overviewRef={overviewRef}
+          />
+        )}
 
         {/* Right margin background */}
         <rect
@@ -203,14 +219,13 @@ const LineConfidenceChart: React.FC<LineConfidenceChartProps> = ({
         />
       </svg>
 
-      {/* Tooltips */}
-      <ChartTooltip
-        tooltip={tooltip}
-        tooltipPoint={tooltipPoint}
-        setTooltipAggregation={setTooltipAggregation}
-        setTooltipPoint={setTooltipPoint}
-        renderDataPoints={renderDataPoints}
-      />
+      {/* Measurement note callout — opens on click, shows/adds notes at that point */}
+      {selectedPoint && (
+        <MeasurementNoteCallout
+          point={selectedPoint}
+          onClose={() => setSelectedPoint(null)}
+        />
+      )}
     </div>
   );
 };
